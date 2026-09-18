@@ -447,7 +447,9 @@ type
     rssCacheTime*: int
     listCacheTime*: int
 
-    cacheMaxEntries*: int
+    cacheEnabled*: bool
+    kvEndpoint*, kvBucket*, kvPrefix*: string
+    kvTimeoutMs*: int
 
   Rss* = object
     feed*, cursor*: string

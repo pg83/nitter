@@ -20,6 +20,7 @@ jobs:
     secrets: inherit
 
   build:
+    if: github.repository == 'zedeus/nitter'
     needs: [tests]
     strategy:
       fail-fast: false

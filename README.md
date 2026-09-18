@@ -91,19 +91,35 @@ to install it system-wide or in the user directory you create below.
 To compile the scss files, you need to install `libsass`. On Ubuntu and Debian,
 you can use `libsass-dev`.
 
-Caching uses a process-local, in-memory LRU cache with no external service.
-`[Cache] maxEntries` sets the total entry limit (default: 10000; 0 disables
-caching). This is an entry count, not a byte limit: memory usage depends on
-the size of the cached values. Reads and writes mark entries as recently used;
-when the cache is full, the least recently used entry is evicted.
+Caching uses [KV](https://github.com/pg83/kv), release 2 or later. Each Nitter
+instance connects to its local `kv front`; the fronts share storage backends.
+There is no process-local data cache. Configure `[Cache] kvEndpoint` (default
+`http://127.0.0.1:8061`), `kvBucket` (default `nitter`), and `kvTimeoutMs`
+(default 1000). Create the named bucket in every `kv back` configuration;
+its byte capacity and LRU eviction are controlled by KV. The old `maxEntries`
+setting has been removed. Set `[Cache] enabled = false` to disable caching.
 
 Profiles expire after one hour, photo rails after two hours, and account info
 after one day. List and community metadata use `listMinutes`, and RSS feeds use
-`rssMinutes`; setting either to 0 disables caching for that category. Username
-to ID mappings have no time-based expiry but are subject to LRU eviction.
-Reads do not extend expiry times. Expired entries are removed when read or
-evicted, and still count towards the entry limit until then. Each process has
-its own cache, which is empty after a restart.
+`rssMinutes`; setting either to 0 bypasses caching for that category. Username
+to ID mappings have no time-based expiry but are subject to KV eviction.
+
+Absolute expiry timestamps are stored alongside the values, so hosts need
+synchronized clocks. Reads do not extend expiry times. KV keeps expired bytes
+until overwrite or eviction; Nitter treats expired records as cache misses.
+`kvPrefix` separates serialization namespaces; use the same prefix on instances
+that should share data. Restarting Nitter or a front preserves cached values;
+restarting a KV backend loses the values held by that backend. KV has no replication.
+
+A failed or timed-out KV request is a cache miss (or a discarded cache write),
+so Nitter can continue serving through X. The cache HTTP client uses its own
+connections independently of the proxy configured for X.
+
+Run `nimble testCache` for the client and application tests. To also test
+against three real backends and fronts, build KV 2 and run
+`KV_BIN=/absolute/path/to/kv nimble testKv`. This includes cross-process reads
+and a front restart. Live X tests additionally require account sessions and
+are enabled in CI with the `NITTER_LIVE_TESTS` repository variable.
 
 Here's how to create a `nitter` user, clone the repo, and build the project
 along with the scss and md files.
@@ -128,8 +144,10 @@ performance reasons.
 
 ### Docker
 
-Build this fork locally to use the in-memory cache. The upstream Docker image
-does not include these changes.
+Build this fork locally to use the KV cache. The upstream Docker image
+does not include these changes. The container must be able to reach a KV front:
+with host networking the default localhost endpoint works; with a Compose bridge,
+set `kvEndpoint` to a front reachable from that container.
 
 First create your config file. The Docker commands mount it into the container,
 so it has to exist on the host beforehand. If you've cloned the repo:

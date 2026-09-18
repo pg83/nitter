@@ -29,7 +29,11 @@ proc getConfig*(path: string): (Config, parseCfg.Config) =
     listCacheTime: cfg.get("Cache", "listMinutes", 120),
     rssCacheTime: cfg.get("Cache", "rssMinutes", 10),
 
-    cacheMaxEntries: cfg.get("Cache", "maxEntries", 10000),
+    cacheEnabled: cfg.get("Cache", "enabled", true),
+    kvEndpoint: cfg.get("Cache", "kvEndpoint", "http://127.0.0.1:8061"),
+    kvBucket: cfg.get("Cache", "kvBucket", "nitter"),
+    kvPrefix: cfg.get("Cache", "kvPrefix", "nitter:v1:"),
+    kvTimeoutMs: cfg.get("Cache", "kvTimeoutMs", 1000),
 
     # Config
     hmacKey: cfg.get("Config", "hmacKey", "secretkey"),

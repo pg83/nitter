@@ -52,8 +52,26 @@ jobs:
       - name: Install cache test runtime dependency
         run: sudo apt-get install -y --no-install-recommends libpcre3
 
-      - name: Test in-memory cache
+      - name: Test KV client and application cache
         run: nimble testCache -Y
+
+      - name: Checkout KV 2
+        uses: actions/checkout@v6
+        with:
+          repository: pg83/kv
+          ref: '2'
+          path: .kv
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: .kv/go.mod
+          cache: false
+
+      - name: Test with real KV cluster
+        run: |
+          (cd .kv && go build -o kv .)
+          KV_BIN="$PWD/.kv/kv" nimble testKv -Y
 
       - name: Upload 2.2.x build artifact
         if: matrix.nim == '2.2.x'
@@ -65,6 +83,7 @@ jobs:
           if-no-files-found: error
 
   integration-test:
+    if: vars.NITTER_LIVE_TESTS == 'true'
     needs: [build-test]
     name: Integration test
     runs-on: ubuntu-24.04
@@ -142,8 +161,11 @@ jobs:
           nim r tools/rendermd.nim
           nim r tools/gencss.nim
 
-          echo '${{ secrets.SESSIONS }}' | head -n1
-          echo '${{ secrets.SESSIONS }}' > ./sessions.jsonl
+
+      - name: Install account sessions
+        env:
+          NITTER_SESSIONS: ${{ secrets.SESSIONS }}
+        run: printf '%s\n' "$NITTER_SESSIONS" > ./sessions.jsonl
 
       - name: Run Tests
         run: |

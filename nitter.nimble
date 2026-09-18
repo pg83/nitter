@@ -25,9 +25,14 @@ requires "oauth == 0.11"
 
 # Tasks
 
-task testCache, "Test the in-memory LRU cache":
-  exec "nim r --mm:refc --assertions:on tests/test_lru_cache.nim"
+task testCache, "Test the KV client and shared application cache":
+  exec "nim r --mm:refc --assertions:on tests/test_kv_cache.nim"
   exec "nim r --mm:refc --assertions:on tests/test_cache.nim"
+
+task testKv, "Test separate Nitter processes against KV 2 (KV_BIN required)":
+  exec "nim c --mm:refc --assertions:on tests/test_cache.nim"
+  exec "nim c --mm:refc --assertions:on tests/cache_probe.nim"
+  exec "python3 tests/kv_integration.py --kv \"$KV_BIN\""
 
 task scss, "Generate css":
   exec "nim r --hint[Processing]:off tools/gencss"

@@ -1,15 +1,29 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-import std/[asyncdispatch, os, times, unittest]
+import std/[asyncdispatch, os, times, unittest, strutils]
 import ../src/[cache, config, types]
+import kv_fixture
 
-suite "application cache without external services":
+let fixture = startKvFixture()
+let endpoints = getEnv("KV_TEST_ENDPOINTS", fixture.endpoint).split(',')
+var namespace, clientNumber = 0
+proc cacheConfig(enabled=true; rss=1; lists=1): Config =
+  inc clientNumber
+  Config(cacheEnabled: enabled, kvEndpoint: endpoints[clientNumber mod endpoints.len], kvBucket: "nitter",
+         kvPrefix: "test:" & $getCurrentProcessId() & ":" & $namespace & ":",
+         kvTimeoutMs: 1000, rssCacheTime: rss, listCacheTime: lists)
+
+suite "application cache backed by KV":
   setup:
-    initCache(Config(cacheMaxEntries: 8, rssCacheTime: 1, listCacheTime: 1))
+    inc namespace
+    initCache(cacheConfig())
     let joined = fromUnix(1600000000).utc
 
-  test "example configuration sets the entry limit":
+  test "example configuration uses the local KV front":
     let (cfg, _) = getConfig(currentSourcePath.parentDir.parentDir / "nitter.example.conf")
-    check cfg.cacheMaxEntries == 10000
+    check cfg.cacheEnabled
+    check cfg.kvEndpoint == "http://127.0.0.1:8061"
+    check cfg.kvBucket == "nitter"
+    check cfg.kvTimeoutMs == 1000
 
   test "profiles and ID mappings normalize usernames":
     waitFor cache(User(id: "123", username: "Alice", fullname: "Alice", joinDate: joined))
@@ -58,34 +72,28 @@ suite "application cache without external services":
     waitFor cacheRss("empty", Rss(cursor: "", feed: "<rss/>"))
     check (waitFor getCachedRss("empty")) == Rss()
 
-  test "all categories share one entry limit":
-    initCache(Config(cacheMaxEntries: 2, rssCacheTime: 1))
-    waitFor cache(User(username: "alice", joinDate: joined))
-    waitFor cacheRss("one", Rss(cursor: "cursor-1", feed: "one"))
-    waitFor cacheRss("two", Rss(cursor: "cursor-2", feed: "two"))
-    check (waitFor getCachedUser("alice", fetch=false)).username == ""
-    check (waitFor getCachedRss("one")).feed == "one"
-    check (waitFor getCachedRss("two")).feed == "two"
-
-  test "zero capacity disables caching":
-    initCache(Config(cacheMaxEntries: 0, rssCacheTime: 1))
-    waitFor cache(User(id: "123", username: "alice", joinDate: joined))
+  test "disabled cache bypasses existing shared data":
     waitFor cacheRss("feed", Rss(cursor: "cursor-1", feed: "<rss/>"))
+    initCache(cacheConfig(enabled=false))
+    waitFor cache(User(id: "123", username: "alice", joinDate: joined))
     check (waitFor getCachedUser("alice", fetch=false)).id == ""
     check (waitFor getCachedRss("feed")) == Rss()
 
   test "zero RSS lifetime disables RSS caching":
-    initCache(Config(cacheMaxEntries: 8, rssCacheTime: 0))
+    waitFor cacheRss("feed", Rss(cursor: "old-cursor", feed: "old"))
+    initCache(cacheConfig(rss=0))
     waitFor cacheRss("feed", Rss(cursor: "cursor-1", feed: "<rss/>"))
     check (waitFor getCachedRss("feed")) == Rss()
 
-  test "zero list lifetime does not consume cache capacity":
-    initCache(Config(cacheMaxEntries: 1, rssCacheTime: 1, listCacheTime: 0))
+  test "zero list lifetime skips writes":
+    initCache(cacheConfig(lists=0))
     waitFor cacheRss("feed", Rss(cursor: "cursor-1", feed: "<rss/>"))
     waitFor cache(List(id: "123", name: "List"))
     check (waitFor getCachedRss("feed")).feed == "<rss/>"
 
-  test "reinitializing clears cached data":
+  test "new clients retain cached data across reinitialization":
     waitFor cacheRss("feed", Rss(cursor: "cursor-1", feed: "<rss/>"))
-    initCache(Config(cacheMaxEntries: 8, rssCacheTime: 1))
-    check (waitFor getCachedRss("feed")) == Rss()
+    initCache(cacheConfig())
+    check (waitFor getCachedRss("feed")).feed == "<rss/>"
+
+fixture.close()

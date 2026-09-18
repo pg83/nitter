@@ -2,12 +2,12 @@
 import asyncdispatch, times, strutils, options
 import flatty, supersnappy
 
-import types, api, lru_cache
+import types, api, kv_cache
 
 const baseCacheTime = 60 * 60
 
 var
-  store: LruCache
+  store: KvCache
   rssCacheTime: int
   listCacheTime: int
 
@@ -22,49 +22,51 @@ proc fromFlatty*(s: string, i: var int, x: var DateTime) =
   x = fromUnix(unix).utc()
 
 proc initCache*(cfg: Config) =
-  store = initLruCache(cfg.cacheMaxEntries)
+  store.close()
+  store = initKvCache(cfg.kvEndpoint, cfg.kvBucket, cfg.kvPrefix,
+                      cfg.kvTimeoutMs, cfg.cacheEnabled)
   rssCacheTime = max(0, cfg.rssCacheTime) * 60
   listCacheTime = max(0, cfg.listCacheTime) * 60
 
-proc set[T](key: string; ttl: int; data: T) =
-  store.put(key, compress(toFlatty(data)), ttl)
+proc set[T](key: string; ttl: int; data: T): Future[void] {.async.} =
+  await store.put(key, compress(toFlatty(data)), ttl)
 
 template deserialize(data, T) =
   result = fromFlatty(uncompress(data.get), T)
 
-proc cacheUserId(username, id: string) =
+proc cacheUserId(username, id: string): Future[void] {.async.} =
   if username.len == 0 or id.len == 0: return
-  store.put("pid:" & toLower(username), id)
+  await store.put("pid:" & toLower(username), id)
 
 proc cache*(data: List) {.async.} =
-  set("l:" & data.id, listCacheTime, data)
+  await set("l:" & data.id, listCacheTime, data)
 
 proc cache*(data: PhotoRail; name: string) {.async.} =
-  set("pr2:" & toLower(name), baseCacheTime * 2, data)
+  await set("pr2:" & toLower(name), baseCacheTime * 2, data)
 
 proc cache*(data: User) {.async.} =
   if data.username.len == 0: return
-  cacheUserId(data.username, data.id)
-  set("p:" & toLower(data.username), baseCacheTime, data)
+  await cacheUserId(data.username, data.id)
+  await set("p:" & toLower(data.username), baseCacheTime, data)
 
 proc cacheRss*(query: string; rss: Rss) {.async.} =
   let data = Rss(cursor: rss.cursor,
                  feed: if rss.cursor == "suspended": "" else: rss.feed)
-  set("rss:" & query, rssCacheTime, data)
+  await set("rss:" & query, rssCacheTime, data)
 
 proc getUserId*(username: string): Future[string] {.async.} =
-  let id = store.get("pid:" & toLower(username))
+  let id = await store.get("pid:" & toLower(username))
   if id.isSome:
     return id.get
   let user = await getGraphUser(username)
   if user.suspended:
     return "suspended"
-  cacheUserId(username, user.id)
+  await cacheUserId(username, user.id)
   await cache(user)
   return user.id
 
 proc getCachedUser*(username: string; fetch=true): Future[User] {.async.} =
-  let prof = store.get("p:" & toLower(username))
+  let prof = await store.get("p:" & toLower(username))
   if prof.isSome:
     prof.deserialize(User)
   elif fetch:
@@ -74,7 +76,7 @@ proc getCachedUser*(username: string; fetch=true): Future[User] {.async.} =
 proc getCachedUsername*(userId: string): Future[string] {.async.} =
   let
     key = "i:" & userId
-    username = store.get(key)
+    username = await store.get(key)
 
   if username.isSome:
     result = username.get
@@ -82,17 +84,17 @@ proc getCachedUsername*(userId: string): Future[string] {.async.} =
     let user = await getGraphUserById(userId)
     result = user.username
     if result.len > 0:
-      store.put(key, result, baseCacheTime)
+      await store.put(key, result, baseCacheTime)
       if user.id.len > 0:
         await cache(user)
 
 proc cache*(data: Broadcast) {.async.} =
   if data.id.len == 0: return
-  set("bc:" & data.id, baseCacheTime, data)
+  await set("bc:" & data.id, baseCacheTime, data)
 
 proc getCachedBroadcast*(id: string): Future[Broadcast] {.async.} =
   if id.len == 0: return
-  let cached = store.get("bc:" & id)
+  let cached = await store.get("bc:" & id)
   if cached.isSome:
     cached.deserialize(Broadcast)
   else:
@@ -103,11 +105,11 @@ proc getCachedBroadcast*(id: string): Future[Broadcast] {.async.} =
 proc cache*(data: AudioSpace) {.async.} =
   if data.id.len == 0: return
   let ttl = if data.state == "RUNNING": baseCacheTime div 6 else: baseCacheTime
-  set("sp:" & data.id, ttl, data)
+  await set("sp:" & data.id, ttl, data)
 
 proc getCachedAudioSpace*(id: string): Future[AudioSpace] {.async.} =
   if id.len == 0: return
-  let cached = store.get("sp:" & id)
+  let cached = await store.get("sp:" & id)
   if cached.isSome:
     cached.deserialize(AudioSpace)
   else:
@@ -116,11 +118,11 @@ proc getCachedAudioSpace*(id: string): Future[AudioSpace] {.async.} =
   result.m3u8Url = await fetchBroadcastStream(result.mediaKey)
 
 proc cache*(data: AccountInfo; name: string) {.async.} =
-  set("ai:" & toLower(name), baseCacheTime * 24, data)
+  await set("ai:" & toLower(name), baseCacheTime * 24, data)
 
 proc getCachedAccountInfo*(username: string; fetch=true): Future[AccountInfo] {.async.} =
   if username.len == 0: return
-  let cached = store.get("ai:" & toLower(username))
+  let cached = await store.get("ai:" & toLower(username))
   if cached.isSome:
     cached.deserialize(AccountInfo)
   elif fetch:
@@ -129,7 +131,7 @@ proc getCachedAccountInfo*(username: string; fetch=true): Future[AccountInfo] {.
 
 proc getCachedPhotoRail*(id: string): Future[PhotoRail] {.async.} =
   if id.len == 0: return
-  let rail = store.get("pr2:" & toLower(id))
+  let rail = await store.get("pr2:" & toLower(id))
   if rail.isSome:
     rail.deserialize(PhotoRail)
   else:
@@ -138,11 +140,12 @@ proc getCachedPhotoRail*(id: string): Future[PhotoRail] {.async.} =
 
 proc cache*(data: Community) {.async.} =
   if data.id.len == 0: return
-  set("cm:" & data.id, listCacheTime, data)
+  await set("cm:" & data.id, listCacheTime, data)
 
 proc getCachedCommunity*(id: string): Future[Community] {.async.} =
   if id.len == 0: return
-  let cached = store.get("cm:" & id)
+  let cached = if listCacheTime == 0: none(string)
+               else: await store.get("cm:" & id)
   if cached.isSome:
     cached.deserialize(Community)
   else:
@@ -151,17 +154,18 @@ proc getCachedCommunity*(id: string): Future[Community] {.async.} =
 
 proc getCachedCommunityModerators*(id: string): Future[seq[User]] {.async.} =
   if id.len == 0: return
-  let cached = store.get("cmm:" & id)
+  let cached = if listCacheTime == 0: none(string)
+               else: await store.get("cmm:" & id)
   if cached.isSome:
     cached.deserialize(seq[User])
   else:
     let mods = await getGraphCommunityModerators(id)
     result = mods.content
-    set("cmm:" & id, listCacheTime, result)
+    await set("cmm:" & id, listCacheTime, result)
 
 proc getCachedList*(username=""; slug=""; id=""): Future[List] {.async.} =
-  let list = if id.len == 0: none(string)
-             else: store.get("l:" & id)
+  let list = if id.len == 0 or listCacheTime == 0: none(string)
+             else: await store.get("l:" & id)
 
   if list.isSome:
     list.deserialize(List)
@@ -173,7 +177,8 @@ proc getCachedList*(username=""; slug=""; id=""): Future[List] {.async.} =
     await cache(result)
 
 proc getCachedRss*(key: string): Future[Rss] {.async.} =
-  let rss = store.get("rss:" & key)
+  if rssCacheTime == 0: return
+  let rss = await store.get("rss:" & key)
   if rss.isSome:
     rss.deserialize(Rss)
     if result.cursor.len <= 2:

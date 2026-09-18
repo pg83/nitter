@@ -12,8 +12,9 @@ nitter
 nitter.conf
 guest_accounts.json*
 sessions.json*
-/tests/test_lru_cache
+/tests/test_kv_cache
 /tests/test_cache
+/tests/cache_probe
 *.bak
 /tools/*.json*
 nimbledeps/
