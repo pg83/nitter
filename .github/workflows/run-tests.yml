@@ -50,6 +50,9 @@ jobs:
       - name: Build Project
         run: nimble --useSystemNim --disableNimBinaries build -Y
 
+      - name: Configure dependency paths for standalone test programs
+        run: nimble --useSystemNim --disableNimBinaries setup -Y
+
       - name: Install cache test runtime dependency
         run: sudo apt-get install -y --no-install-recommends libpcre3
 
