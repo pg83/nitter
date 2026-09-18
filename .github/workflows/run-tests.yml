@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       matrix:
-        nim: ["2.0.x", "2.2.x", "devel"]
+        nim: ["2.2.12"]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
@@ -48,13 +48,13 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Project
-        run: nimble build -Y
+        run: nimble --useSystemNim --disableNimBinaries build -Y
 
       - name: Install cache test runtime dependency
         run: sudo apt-get install -y --no-install-recommends libpcre3
 
       - name: Test KV client and application cache
-        run: nimble testCache -Y
+        run: nimble --useSystemNim --disableNimBinaries testCache -Y
 
       - name: Checkout KV 2
         uses: actions/checkout@v6
@@ -72,10 +72,9 @@ jobs:
       - name: Test with real KV cluster
         run: |
           (cd .kv && go build -o kv .)
-          KV_BIN="$PWD/.kv/kv" nimble testKv -Y
+          KV_BIN="$PWD/.kv/kv" nimble --useSystemNim --disableNimBinaries testKv -Y
 
       - name: Upload 2.2.x build artifact
-        if: matrix.nim == '2.2.x'
         uses: actions/upload-artifact@v6
         with:
           name: nitter-linux-nim-2.2.x-${{ github.sha }}
@@ -136,7 +135,7 @@ jobs:
       - name: Setup Nim
         uses: jiro4989/setup-nim-action@v2
         with:
-          nim-version: 2.2.x
+          nim-version: 2.2.12
           use-nightlies: true
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
