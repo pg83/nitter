@@ -18,13 +18,16 @@ requires "nimcrypto == 0.7.3"
 requires "markdown == 0.8.8"
 requires "packedjson#9e6fbb6"
 requires "supersnappy == 2.1.4"
-requires "redpool == 0.2.2"
 requires "zippy == 0.10.19"
 requires "flatty == 0.4.0"
 requires "jsony == 1.1.6"
 requires "oauth == 0.11"
 
 # Tasks
+
+task testCache, "Test the in-memory LRU cache":
+  exec "nim r --mm:refc --assertions:on tests/test_lru_cache.nim"
+  exec "nim r --mm:refc --assertions:on tests/test_cache.nim"
 
 task scss, "Generate css":
   exec "nim r --hint[Processing]:off tools/gencss"

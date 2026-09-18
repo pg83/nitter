@@ -4,7 +4,7 @@ import strformat
 import jester
 
 import router_utils
-import ".."/[types, redis_cache, api]
+import ".."/[types, cache, api]
 import ../views/[general, timeline, community]
 
 export community

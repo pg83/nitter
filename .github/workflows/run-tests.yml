@@ -49,6 +49,12 @@ jobs:
       - name: Build Project
         run: nimble build -Y
 
+      - name: Install cache test runtime dependency
+        run: sudo apt-get install -y --no-install-recommends libpcre3
+
+      - name: Test in-memory cache
+        run: nimble testCache -Y
+
       - name: Upload 2.2.x build artifact
         if: matrix.nim == '2.2.x'
         uses: actions/upload-artifact@v6
@@ -63,12 +69,6 @@ jobs:
     name: Integration test
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-
-    services:
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
 
     steps:
       - name: Install runtime deps

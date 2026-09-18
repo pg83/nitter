@@ -12,7 +12,8 @@ nitter
 nitter.conf
 guest_accounts.json*
 sessions.json*
-dump.rdb
+/tests/test_lru_cache
+/tests/test_cache
 *.bak
 /tools/*.json*
 nimbledeps/

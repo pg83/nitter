@@ -6,7 +6,7 @@ from os import getEnv, normalizedPath
 
 import jester
 
-import types, config, prefs, formatters, redis_cache, http_pool, auth, apiutils
+import types, config, prefs, formatters, cache, http_pool, auth, apiutils
 import views/[general, about]
 import routes/[
   preferences, timeline, status, media, search, rss, list, community, debug,
@@ -32,7 +32,7 @@ stdout.write &"Starting Nitter at {getUrlPrefix(cfg)}\n"
 stdout.flushFile
 
 updateDefaultPrefs(fullCfg)
-setCacheTimes(cfg)
+initCache(cfg)
 setHmacKey(cfg.hmacKey)
 if cfg.hmacKey.len == 0 or cfg.hmacKey == "secretkey":
   stderr.write "WARNING: insecure default 'hmacKey' in nitter.conf; " &
@@ -47,10 +47,6 @@ setMaxConcurrentReqs(cfg.maxConcurrentReqs)
 setMaxRetries(cfg.maxRetries)
 setRetryDelayMs(cfg.retryDelayMs)
 initAboutPage(cfg.staticDir)
-
-waitFor initRedisPool(cfg)
-stdout.write &"Connected to Redis at {cfg.redisHost}:{cfg.redisPort}\n"
-stdout.flushFile
 
 createArticleRouter(cfg)
 createUnsupportedRouter(cfg)

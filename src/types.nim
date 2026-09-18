@@ -447,11 +447,7 @@ type
     rssCacheTime*: int
     listCacheTime*: int
 
-    redisHost*: string
-    redisPort*: int
-    redisConns*: int
-    redisMaxConns*: int
-    redisPassword*: string
+    cacheMaxEntries*: int
 
   Rss* = object
     feed*, cursor*: string

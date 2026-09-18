@@ -4,3 +4,9 @@ LICENSE
 docker-compose.yml
 Dockerfile
 tests/
+nimbledeps/
+nimble.paths
+nimble.develop
+/nitter
+nitter.conf
+sessions.json*

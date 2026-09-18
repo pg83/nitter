@@ -10,7 +10,7 @@ include "../views/rss.nimf"
 
 export times, hashes
 
-proc redisKey*(page, name, cursor: string): string =
+proc rssKey*(page, name, cursor: string): string =
   result = page & ":" & name
   if cursor.len > 0:
     result &= ":" & cursor
@@ -73,7 +73,7 @@ proc createRssRouter*(cfg: Config) =
 
       let
         cursor = getCursor()
-        key = redisKey("search", $hash(genQueryUrl(query)), cursor)
+        key = rssKey("search", $hash(genQueryUrl(query)), cursor)
 
       var rss = await getCachedRss(key)
       if rss.cursor.len > 0:
@@ -93,7 +93,7 @@ proc createRssRouter*(cfg: Config) =
       let
         prefs = requestPrefs()
         name = @"name"
-        key = redisKey("twitter", name, getCursor())
+        key = rssKey("twitter", name, getCursor())
 
       var rss = await getCachedRss(key)
       if rss.cursor.len > 0:
@@ -120,7 +120,7 @@ proc createRssRouter*(cfg: Config) =
       let searchKey = if tab != "search": ""
                       else: ":" & $hash(genQueryUrl(query))
 
-      let key = redisKey(tab, name & searchKey, getCursor())
+      let key = rssKey(tab, name & searchKey, getCursor())
 
       var rss = await getCachedRss(key)
       if rss.cursor.len > 0:
@@ -156,7 +156,7 @@ proc createRssRouter*(cfg: Config) =
         prefs = requestPrefs()
         id = @"id"
         cursor = getCursor()
-        key = redisKey("lists", id, cursor)
+        key = rssKey("lists", id, cursor)
 
       var rss = await getCachedRss(key)
       if rss.cursor.len > 0:
